@@ -82,6 +82,18 @@ def sauvola(image, window=(3,3), k=0.2):
     deviation = np.power((meanSquare - np.power(mean, 2)), 0.5)
     # Sauvola
     R = np.amax(deviation);
-    threshold = np.multiply(mean, (1 + k * (deviation / R-1)))
+    if (R>=0.5):
+        R=0.48
+    elif (R<0.0001):
+        R=0.01
+    else:
+        R=R
+    
+    t = np.divide(deviation, R) -1
+    
+    threshold = np.multiply(mean, (1 + k * t))
     output = np.uint8(image > threshold)*255
-    return output
+    if (np.amax(output) == 0):
+        return (False, [0])
+    else:
+        return (True, output)
