@@ -26,10 +26,34 @@ class GlobalVariables:
         self.value = -1
         self.angle = 0
         self.passed = False
+        self.det_err = detekcja.err()
         pass
     def clearAll(self):
         pass
 
+##############################################################################
+''' DecisionBox window section'''
+##############################################################################
+
+from PyQt5.QtWidgets import QMessageBox
+from PyQt5 import QtCore
+
+class DecisionBox():
+    def __init__(self, title="", txt="", info=""):
+        self.msg = QMessageBox()
+        self.msg.setIcon(QMessageBox.Information)
+        self.msg.setWindowTitle(title)
+        self.msg.setWindowFlags( QtCore.Qt.Window | QtCore.Qt.CustomizeWindowHint | QtCore.Qt.WindowTitleHint | QtCore.Qt.WindowCloseButtonHint | QtCore.Qt.WindowStaysOnTopHint )
+        self.msg.setText(txt)
+        self.msg.setInformativeText(info)
+        self.msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        self.exe()
+    def exe(self):
+        self.retval = self.msg.exec_()
+        if (self.retval == 1024):
+            return True
+        return False
+    pass
 
 ##############################################################################
 ''' SETTINGSWINDOW section'''
@@ -46,7 +70,6 @@ class SettingsWindow(QDialog):
         self.pb_polacz.clicked.connect(self.slot_KALIBRATOR_POLACZ)
         self.pb_rozlacz.clicked.connect(self.slot_KALIBRATOR_ROZLACZ)
         self.pb_kalcheck.clicked.connect(self.slot_KALCHECK)
-        self.pb_kalibruj.clicked.connect(self.slot_KALIBRUJ)
         
         self.pb_autoroi.clicked.connect(self.slot_AUTO_ROI)
         self.pb_roireset.clicked.connect(self.slot_RESET_ROI)
@@ -95,14 +118,11 @@ class SettingsWindow(QDialog):
             self.lineEdit_visa.setText("brak polaczenia")
             self.slot_KALIBRATOR_ROZLACZ()
         pass
-    def slot_KALIBRUJ(self):
-        cp.setMeasurementParams(True)
-        self.KALIBRUJ()
-        cp.setMeasurementParams()
-        pass
     def slot_AUTO_ROI(self):
-        var.ROI_vals = akw.getPoints(var.raw_frame)
-        self.UPDATE_UI()
+        (ret_ok, pts) = akw.getPoints(var.raw_frame)
+        if (ret_ok):
+            var.ROI_vals = pts;
+            self.UPDATE_UI()
         pass
     def slot_RESET_ROI(self):
         self.RESET_ROI()
@@ -123,9 +143,6 @@ class SettingsWindow(QDialog):
         settingsW.sb_r.setValue(var.ROI_vals[1])
         settingsW.sb_t.setValue(var.ROI_vals[2])
         settingsW.sb_b.setValue(var.ROI_vals[3])
-    def KALIBRUJ(self):
-        print var.angle
-        pass
     def RESET_ROI(self):
         var.ROI_vals = (0,0,0,0)
         try:
@@ -137,9 +154,6 @@ class SettingsWindow(QDialog):
         var.ROI_vals = (0, width, 0, height)
 
         self.UPDATE_UI()
-    def getAnglesLim(self):
-        a = (self.min_spin.value(), self.max_spin.value())
-        return a
     def closeEvent(self, event):
         cp.forcedClose()
         pass
@@ -196,6 +210,14 @@ class MeasureWindow(QDialog):
         
     def getRange(self):
         return self.range_spinBox.value()
+    
+    def getAnglesLim(self):
+        return (self.angle_min_spin.value(), self.angle_max_spin.value())
+
+    def rangesRefreshed(self):
+        self.range_spinBox.setValue(var.value_range)
+        self.angle_min_spin.setValue(var.angle_lim[0])
+        self.angle_max_spin.setValue(var.angle_lim[1])
 
     def startMeasurement(self, run=False, series_interval_s=0):
         cp.setMeasurementParams(run, series_interval_s)
@@ -212,16 +234,14 @@ class MeasureWindow(QDialog):
 ''' CheckOutWindow section'''
 ##############################################################################
 
-from PyQt5.QtWidgets import QMessageBox
-
 class CheckWindow(QDialog):
     def __init__(self):
         super(CheckWindow, self).__init__()
         uic.loadUi('ui/check.ui', self)
         self.setWindowTitle("Check your meter")
-        self.type_combo.addItems( ("voltage DC", "voltage AC (sin)") )
-        self.type_combo.currentIndexChanged.connect(self.slot_typeIntexChanged)
-        self.freq_spin.valueChanged.connect(self.slot_typeIntexChanged)
+        self.type_combo.addItems( ("wybierz","voltage DC", "voltage AC (sin)") )
+        self.type_combo.currentIndexChanged.connect(self.slot_typeIndexChanged)
+        self.freq_spin.valueChanged.connect(self.slot_typeIndexChanged)
         
         self.zakresy_pb.clicked.connect(self.slot_startRangeCapture)
         self.range_spin.valueChanged.connect(self.slot_spinsChanged)
@@ -230,53 +250,105 @@ class CheckWindow(QDialog):
         
         self.check_pb.clicked.connect(self.slot_checkClicked)
 
-    def slot_typeIntexChanged(self):
-        if ( self.type_combo.currentIndex() == 0 ):
+    def slot_typeIndexChanged(self):
+        if ( self.type_combo.currentIndex() == 1 ):
             self.freq_box.setEnabled(False)
             vi.setFunc("DC")
             pass
-        elif ( self.type_combo.currentIndex() == 1 ):
+        elif ( self.type_combo.currentIndex() == 2 ):
             self.freq_box.setEnabled(True)
             vi.setFunc("SIN", self.freq_spin.value())
             pass
         else:
             pass
     def slot_startRangeCapture(self):
-        var.angle_lim = (45, 135)
-        self.angle_min_spin.setValue(45)
-        self.angle_max_spin.setValue(135)
-        var.value_range = 5
-        self.range_spin.setValue(5)
+        r = self.findRange()
+        self.range_spin.setValue( r )
+        var.value_range = r
+        
+        m = self.findMinMaxAngle(r)
+        var.angle_lim = (m-90, m)
+        self.angle_min_spin.setValue(m-90)
+        self.angle_max_spin.setValue(m)
         pass
     def slot_checkClicked(self):
-        a = 4.3 #vi.findVoltageForAngle(find_angle=90, max_iter=100)
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Information)
-       
-        msg.setText("Zweryfikuj poprawnosc ZGRUBNEGO wskazania srodka skali.")
-        msg.setInformativeText("Jesli wskazanie jest poprawne kliknij OK, w innym przypadku ustaw recznie wskaznik na srodku skali i wcisnij CANCEL.")
-        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-        retval = msg.exec_()
-        if (retval == 1024):
-            val = np.int(a*2+0.5)
-            if(val > 9)
-                val = np.int(a*2/10+0.5)*10
-            self.range_spin.setValue( val )
-        else:
-            while ( not var.passed ):
-                pass
-            a = var.angle
-            val = np.int(a*2+0.5)
-            if(val > 9)
-                val = np.int(a*2/10+0.5)*10
-            self.range_spin.setValue( val )
+        self.textEdit.clear()
+        txt = "Sprawdzenie dla zakresu %d: \n" % (self.range_spin.value())
+        self.textEdit.append(txt)
+        cp.setMeasurementParams(runMeas=True)
+        vi.setOutputON()
+        for x in range(0, 11):
+            v_gen = var.value_range*x/10.0
             
-        #a =  vi.findAngleForVoltage(find_voltage=0, max_iter=100) 
-        #self.angle_min_spin.setValue( a )
+            if ( self.type_combo.currentIndex() == 0 ):
+                vi.setDcVoltage(OFFS_mV=v_gen*1000)
+            elif ( self.type_combo.currentIndex() == 1 ):
+                vi.setAmplitude(AMPL_mV=v_gen*1000)
+                
+            time.sleep(1)
+            timeout = 100000
+            while ( (not var.passed) and (timeout>0) ):
+                timeout = timeout - 1
+                #time.sleep(0.01)
+            v_pom = var.value
+            if (v_gen == 0):
+                v_gen = 0.0000000001
+            err = np.fabs(v_gen-v_pom)/v_gen *100.0
+            print (v_gen, v_pom, err)
+            txt = "%d:   gen: %5.2f; pom: %5.2f, blad: %5.2f" % (np.asscalar(np.float32(x)), 
+                                                                 np.asscalar(np.float32(v_gen)), 
+                                                                 np.asscalar(np.float32(v_pom)), 
+                                                                 np.asscalar(np.float32(err)) )
+            self.textEdit.append(txt)
+            
         pass
     def slot_spinsChanged(self):
         var.value_range = self.range_spin.value()
         var.angle_lim = (self.angle_min_spin.value(), self.angle_max_spin.value())
+        measureW.rangesRefreshed()
+        
+    def findMinMaxAngle(self, range_voltage):
+        cp.setMeasurementParams(runMeas=True)
+        a = 135.0  #vi.findAngleForVoltage(range_voltage)
+        
+        ret = DecisionBox("Zweryfikuj",
+                          "Zweryfikuj poprawnosc wskazania maksimum skali.",
+                          "Jesli wskazanie jest poprawne kliknij OK, w innym przypadku ustaw recznie wskaznik na srodku skali i wcisnij CANCEL.")
+        if (ret):
+            cp.setMeasurementParams()
+            return a
+        else:
+            timeout = 100000
+            while ( (not var.passed) and (timeout>0) ):
+                timeout = timeout - 1
+            a = var.angle
+            cp.setMeasurementParams()
+            return a
+        
+    def findRange(self):
+        cp.setMeasurementParams(runMeas=True)
+        a = 19.0 #vi.findVoltageForAngle(find_angle=90, max_iter=100)
+        
+        ret = DecisionBox("Zweryfikuj",
+                         "Zweryfikuj poprawnosc ZGRUBNEGO wskazania srodka skali.",
+                         "Jesli wskazanie jest poprawne kliknij OK, w innym przypadku ustaw recznie wskaznik na srodku skali i wcisnij CANCEL.")
+        if (ret):
+            val = np.int(a*2+0.5)
+            if(val > 9):
+                val = np.int(a*2.0/10.0+0.5)*10
+            cp.setMeasurementParams( )
+            return val
+        else:
+            timeout = 100000
+            while ( (not var.passed) and (timeout>0) ):
+                timeout = timeout - 1
+                
+            a = var.angle
+            val = np.int(a*2.0+0.5)
+            if(val > 9):
+                val = np.int(a*2.0/10.0+0.5)*10
+            cp.setMeasurementParams( )
+            return val
             
 
 ##############################################################################
@@ -311,6 +383,10 @@ class CameraProcessing(threading.Thread):
         except:
             pass
         
+    def cropFrame(self, frame):
+        t = frame[var.ROI_vals[2]:var.ROI_vals[3],var.ROI_vals[0]:var.ROI_vals[1],:]
+        return t   
+     
     def run(self):
         if (self._run):
             cv2.namedWindow("live", cv2.WINDOW_AUTOSIZE)
@@ -332,14 +408,14 @@ class CameraProcessing(threading.Thread):
                 
                 var.frame = var.raw_frame
 
-                var.frame = cam_cropFrame(var.frame)
-                ret, var.frame = cam_preprocessing(var.frame)
+                var.frame = self.cropFrame(var.frame)
+                ret, var.frame = prep.preprocessing(var.frame)
                 if (not ret):
                     var.video.release()
                     cv2.destroyWindow("live")
                     print "analyze error"
                     break
-                var.frame = cam_ekstrakcja(var.frame)
+                var.frame = ekstrakcja.ekstrakcja(var.frame)
                     
                 
                 if (np.size(var.frame, axis=1)==0 or np.size(var.frame, axis=0)==0):
@@ -365,15 +441,29 @@ class CameraProcessing(threading.Thread):
                     var.angle = detekcja.detection(var.frame)
                     
                     var.value_range = measureW.getRange()
-                    var.angle_lim = settingsW.getAnglesLim()
+                    var.angle_lim = measureW.getAnglesLim()
                     
                     var.value = detekcja.calculateValue(var.angle, var.angle_lim, var.value_range)
                         
                     if ( (var.value >= 0) and (var.angle >= 0) ):
                         var.passed = True
                         measureW.setValue(var.value)
-                    
-                    print "angle: ", var.angle, "  measured value: ", var.value
+                        print "angle: ", var.angle, "  measured value: ", var.value
+                    else:
+                        if (var.value == var.det_err.value_below_min):
+                            print "measured value below minimum"
+                        elif (var.value == var.det_err.value_above_max):
+                            print "measured value above maximum"
+                        elif (var.value == var.det_err.too_much_lines):
+                            print "too much lines on camera frame, check meter position and ROI"
+                        elif (var.value == var.det_err.fatal_from_detection):
+                            print "fatal error from detection func!!!"
+                        elif (var.value == var.det_err.angle_below_min):
+                            print "angle value below minimum"
+                        elif (var.value == var.det_err.angle_above_max):
+                            print "angle value above maximum"
+                        else:
+                            print "critical error - unexpected value :("
                     
                 else:
                     key = cv2.waitKey(100)
@@ -385,17 +475,6 @@ class CameraProcessing(threading.Thread):
                         #self.pushButton_3.setEnabled(True)
                         break
         pass
-            
-    
-def cam_cropFrame(frame):
-    t = frame[var.ROI_vals[2]:var.ROI_vals[3],var.ROI_vals[0]:var.ROI_vals[1],:]
-    return t
-
-def cam_preprocessing(frame):
-    return prep.preprocessing(frame)
-
-def cam_ekstrakcja(frame):
-    return ekstrakcja.ekstrakcja(frame)
 
 
 ##############################################################################
@@ -555,14 +634,21 @@ class VisaInstrument(threading.Thread):
             else:
                 gen_v = gen_v - d_volt
                 
-            self.setDcVoltage(OFFS_mV = numpy.around(d_volt))
+            self.setDcVoltage(OFFS_mV = numpy.around(gen_v))
             time.sleep(1)
         pass
         
         if (i == max_iter):
             return (False, 0)
         else:
-            return (True, var.angle)
+            return (True, gen_v)
+        pass
+    
+    def findAngleForVoltage(self, find_voltage):
+        self.setDcVoltage(OFFS_mV = find_voltage*1000)
+        time.sleep(1)
+        return (True, var.angle)
+        
         
         
         

@@ -5,7 +5,13 @@ import cv2
 
 def getPoints(img):
     
-    image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    points = (0,0,0,0)
+            
+    try:
+        image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    except:
+        print "cannot get frame, firstly run camera"
+        return (False, points)
 
     
     a = left(image[:,0:np.size(image,axis=1)/3])
@@ -18,7 +24,7 @@ def getPoints(img):
     points = (a+10, b-10, c+10, d-20)
     print points
 
-    return points
+    return (True, points)
 
 def left(image):
     
