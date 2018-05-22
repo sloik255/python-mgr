@@ -455,7 +455,7 @@ class CameraProcessing(threading.Thread):
                         elif (var.value == var.det_err.value_above_max):
                             print "measured value above maximum"
                         elif (var.value == var.det_err.too_much_lines):
-                            print "too much lines on camera frame, check meter position and ROI"
+                            print "too much lines on frame, check meter position and ROI"
                         elif (var.value == var.det_err.fatal_from_detection):
                             print "fatal error from detection func!!!"
                         elif (var.value == var.det_err.angle_below_min):
@@ -689,21 +689,15 @@ if __name__ == '__main__':
     
     vi = VisaInstrument()
     vi.getResourcesList()
-    
       
     app = QApplication(sys.argv)
     
     settingsW = SettingsWindow()
-    
     measureW = MeasureWindow()
     measureW.setWindowModality(1)
-    
     ckeckW = CheckWindow()
     ckeckW.setWindowModality(1)
-    
     settingsW.show()
     
-    
-
     app.exec_()  
     

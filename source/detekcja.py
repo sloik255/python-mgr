@@ -17,32 +17,35 @@ _err = err()
 
 def detection(image):
     
-    
+    #ujednolicenie ukladu wspolrzednych
     img = cv2.flip(image, 1)
-    
-    l_thres = np.int32(np.size(img, axis=0) / 2.5)
-    
-    all_lines = cv2.HoughLines(img,rho=1,theta=np.pi/180,threshold=l_thres)
-    
+    #obliczenie minimalnej dlugosci wykrywanej linii
+    l_thres = np.int32(np.size(img, axis=0) / 2,5)
+    #uzyskanie wyniku transformacji Hougha w postaci danych linii
+    all_lines = cv2.HoughLines(img,rho=1,theta=np.pi/180,threshold=l_thres)  
+
+    #odrzucenie transformacji gdy wykryto za duzo linii
     if (not (np.size(all_lines) >= 3)):
         return _err.too_much_lines
     
+    #przeliczenie radianow na stopnie
     fi = all_lines[:,0,1]*180/np.pi
-
     
-    angle = np.median(fi)
-    if (angle == 0):
-        return 0
-    elif (angle <= 90):
-        angle = 90 - angle
-        return angle
-    elif (angle > 90):
-        angle = 270 - angle
-        return angle
-    else:
-        pass
+    #print "kat 0:", fi
 
-    return _err.fatal_from_detection
+    #unormowanie wyniku do ukladu wspolrzednych i zwrocenie wyniku
+    for i in range (0, np.size(fi)):
+        if (fi[i] <= 90):
+            fi[i] = 90 - fi[i]
+        elif (fi[i] > 90):
+          fi[i] = 270 - fi[i]
+          
+    #print "kat 1:", fi        
+    angle = np.median(fi)
+    
+    #print "kat:", angle
+    return angle
+
 
 def calculateValue(angle, angle_lim, value_range):
     

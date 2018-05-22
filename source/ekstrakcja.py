@@ -1,26 +1,30 @@
 import numpy as np
-import matplotlib.pylab as pyl
 import cv2
 from numba import jit
 
 @jit
 def ekstrakcja(img):
+
     size = np.size(img)
     skel = np.zeros(img.shape,np.uint8) 
     
-    element = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
-    
+    #odwrocenie kolorow - wymagane przez cv2
     ret,img = cv2.threshold(img,127,255,cv2.THRESH_BINARY_INV)
-    img = cv2.dilate(img,np.array([[1,1,1],[1,1,1],[1,1,1]]),iterations = 1)
     
-    img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, element)
+    #generacja elementow strukturalnych dla operacji morfologicznych
+    element_square = np.array([[1,1,1],[1,1,1],[1,1,1]])
+    element_cross = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
     
-
+    #dylatacja
+    img = cv2.dilate(img,element_square,iterations = 1)        
+    #zamkniecie obiektu
+    img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, element_cross)
+    
+    #szkieletyzacja iteracyjna
     done = False
-    
     while( not done):
-        eroded = cv2.erode(img,element)
-        temp = cv2.dilate(eroded,element)
+        eroded = cv2.erode(img,element_cross)
+        temp = cv2.dilate(eroded,element_cross)
         temp = cv2.subtract(img,temp)
         skel = cv2.bitwise_or(skel,temp)
         img = eroded.copy()
@@ -29,16 +33,10 @@ def ekstrakcja(img):
         if zeros==size:
             done = True
     
+    #pogrybienie linii to dwoch pikseli
     img = cv2.dilate(img,np.array([[1,1],[1,1]]),iterations = 1)
+    
+    #ponowne odrocenie kolorow
     ret,out = cv2.threshold(skel,127,255,cv2.THRESH_BINARY_INV)
+    
     return skel
-
-'''
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-                                [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-                                [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
-                                [0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
-                                [0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0],
-                                [0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0],
-                                
-'''
