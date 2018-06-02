@@ -46,11 +46,9 @@ class GlobalVariables:
         #print "<>waiting for reentrant mutex unlock..."
         self.mutex__.acquire()
         #print ">>reentrant mutex locked!"
-        pass
     def unlock(self):
         self.mutex__.release()   
         #print "<<reentrant  var mutex unlocked!"
-        pass
 
 ##############################################################################
 ''' DecisionBox window section'''
@@ -181,6 +179,7 @@ class SettingsWindow(QDialog):
         var.unlock()
     def UPDATE_UI(self):
         var.lock()
+        ROI_vals = var.ROI_vals
         settingsW.sb_l.setValue(var.ROI_vals[0])
         settingsW.sb_r.setValue(var.ROI_vals[1])
         settingsW.sb_t.setValue(var.ROI_vals[2])
@@ -200,10 +199,6 @@ class SettingsWindow(QDialog):
         self.UPDATE_UI()
     def closeEvent(self, event):
         cp.forcedClose()
-        ckeckW.close()
-        measureW.close()
-        cp.terminate()
-        vi.terminate()
         pass
     
 
@@ -418,18 +413,17 @@ class CheckWindow(QDialog):
 ##############################################################################
     
 '''                         '''
+import multiprocessing
 
-class CameraProcessing(threading.Thread):
+class CameraProcessing():
     def __init__(self):
-        self._kill = False
         self._video_release = False
-        self._cam_num_changed = False
         self._run = False
         self._runMeas = False
         self._series_interval_ms = 0
         
-        threading.Thread.__init__(self)
-        
+        proc = multiprocessing.Process(target=self.run, args=())
+        proc.start()
         print "Konfiguracja watku frameProcessing zakonczona."
         
     def setMeasurementParams(self, runMeas=False, series_interval_s=0):
@@ -440,14 +434,15 @@ class CameraProcessing(threading.Thread):
         pass
         
     def setCamera(self, run=False):
-        self._run = run 
-        if (self._run):
-            self.cam_number_changed = True
+        self._run = run
+        if (run):
+            self.run()
     
     def forcedClose(self):
         try:
             self._video_release = True
             print "trying to stop analyze...."
+            #self.proc.join()
         except:
             pass
         
@@ -456,25 +451,17 @@ class CameraProcessing(threading.Thread):
         t = frame[var.ROI_vals[2]:var.ROI_vals[3],var.ROI_vals[0]:var.ROI_vals[1],:]
         var.unlock()
         return t   
-    
-    def terminate(self):
-        self._kill = True
-        
+     
     def run(self):
         import cv2
-        print "cp.run: ", threading.current_thread()
-        while (True):
-            if (self._kill):
-                break
-            
+        print threading.current_thread()
+        while (1):
             if (self._run):
                 var.lock()
-                if ( self.cam_number_changed == True):
-                    video_stream = cv2.VideoCapture(var.cam_number)
-    
                 self._video_release = False
                 cv2.namedWindow("live", cv2.WINDOW_AUTOSIZE)
                 cv2.namedWindow("raw", cv2.WINDOW_AUTOSIZE)
+                video_stream = cv2.VideoCapture(var.cam_number)
                               
                 if video_stream.isOpened():
                     var.vid_exists, var.raw_frame = video_stream.read()
@@ -482,19 +469,11 @@ class CameraProcessing(threading.Thread):
                     settingsW.RESET_ROI()
                     
                 else:
-                    video_stream.release()
                     var.vid_exists = False
                     cv2.destroyWindow("live")
                     cv2.destroyWindow("raw")
                     print "analyze stopped by hardware"
                     #self.pushButton_3.setEnabled(True)
-                
-                if (self._video_release == True):
-                    video_stream.release()
-                    cv2.destroyWindow("live")
-                    cv2.destroyWindow("raw")
-                    print "analyze stopped by user"
-                    
                 var.unlock()
                 
                 vid_exists = var.vid_exists
@@ -510,8 +489,6 @@ class CameraProcessing(threading.Thread):
                     
                     ret, var.frame = prep.preprocessing(var.frame)
                     if (not ret):
-                        self.setMeasurementParams()
-                        self.setCamera()
                         video_stream.release()
                         cv2.destroyWindow("live")
                         cv2.destroyWindow("raw")
@@ -520,8 +497,6 @@ class CameraProcessing(threading.Thread):
                         break
                     
                     if (self._video_release == True):
-                        self.setMeasurementParams()
-                        self.setCamera()
                         video_stream.release()
                         cv2.destroyWindow("live")
                         cv2.destroyWindow("raw")
@@ -533,8 +508,6 @@ class CameraProcessing(threading.Thread):
                         
                     
                     if (np.size(var.frame, axis=1)==0 or np.size(var.frame, axis=0)==0):
-                        self.setMeasurementParams()
-                        self.setCamera()
                         video_stream.release()
                         cv2.destroyWindow("live")
                         cv2.destroyWindow("raw")
@@ -589,13 +562,18 @@ class CameraProcessing(threading.Thread):
                                 print "critical error - unexpected value :("
                         
                     else:
-                        cv2.waitKey(100)
-    
+                        key = cv2.waitKey(100)
+                        if (key == 27):
+                            cv2.destroyWindow("live")
+                            cv2.destroyWindow("raw")
+                            video_stream.release()
+                            print "analyze stopped"
+                            self._run = False
+                            #self.pushButton_3.setEnabled(True)
+                            var.unlock()
+                            break
                     var.unlock()
-            else:
-                pass
-            
-        #self.join()
+            pass
 
 
 ##############################################################################
@@ -805,7 +783,6 @@ import serial, time, threading, numpy
 class InmelClass(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
-        self._kill = False
         self.my_instrument = None
         
         self.ser_port = serial.Serial()
@@ -814,8 +791,7 @@ class InmelClass(threading.Thread):
         self.ser_port.parity=serial.PARITY_NONE
         self.ser_port.stopbits=serial.STOPBITS_ONE
         self.ser_port.bytesize=serial.EIGHTBITS
-        self.ser_port.timeout = 5
-        
+        self.ser_port.timeout = 1
         
         print "Konfiguracja watku InmelClass zakonczona."
         
@@ -987,10 +963,7 @@ class InmelClass(threading.Thread):
         
         i = 0
         
-        
-        while ( (numpy.fabs(now_angle)>5) and (i < max_iter) ):
-            print numpy.fabs(now_angle)
-            
+        while ( (numpy.fabs(now_angle)>2) and (i < max_iter) ):
             i = i+1
             var.lock()
             last_angle = now_angle
@@ -1030,15 +1003,9 @@ class InmelClass(threading.Thread):
         var.unlock()
         return angle
 
-    def terminate(self):
-        self._kill = True
-        
     def run(self):
         print threading.current_thread()
         while (True):
-            if (self._kill):
-                break
-            
             if (not (self.my_instrument is None)):
                 if (self.ser_port.is_open == True):  
                     try:
@@ -1056,7 +1023,7 @@ class InmelClass(threading.Thread):
             else:
                 sleep_nonblock(5)
                         
-        #self.join()
+        pass
     
     
     
@@ -1074,7 +1041,8 @@ if __name__ == '__main__':
     var = GlobalVariables()
 
     cp = CameraProcessing()
-    cp.start()
+    cp.setMeasurementParams()
+    #cp.start()
     
     vi = InmelClass()
     #vi = VisaInstrument()

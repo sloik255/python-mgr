@@ -18,7 +18,7 @@ def ekstrakcja(img):
     #dylatacja
     img = cv2.dilate(img,element_square,iterations = 1)        
     #zamkniecie obiektu
-    img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, element_cross)
+    #img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, element_cross)
     
     #szkieletyzacja iteracyjna
     done = False

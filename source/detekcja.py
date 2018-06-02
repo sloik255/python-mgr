@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from skimage.transform import hough_line 
 
 class err:
     def __init__(self):
@@ -20,10 +21,36 @@ def detection(image):
     #ujednolicenie ukladu wspolrzednych
     img = cv2.flip(image, 1)
     #obliczenie minimalnej dlugosci wykrywanej linii
-    l_thres = np.int32(np.size(img, axis=0) / 2,5)
+    l_thres = np.int32(np.size(img, axis=0) / 2.5)
+    #uzyskanie wyniku transformacji Hougha w postaci danych linii
+    hough, theta, d = hough_line(image, np.linspace(-np.pi/2, np.pi/2, 360*2))    
+    
+    h = hough
+    maxindex = h.argmax();
+    #odrzucenie transformacji gdy wykryto za duzo linii
+    #print h.max()
+    if (h.max()<l_thres):
+        return _err.value_below_min
+    
+    if (maxindex > np.size(h, 1)):
+        row = maxindex/np.size(h,1)
+        column = maxindex - row*np.size(h,1)
+    #przeliczenie radianow na stopnie
+    
+    angle = column/4.0
+    
+    #print "kat:", angle
+    return angle
+
+def detection_cv2(image):
+    
+    #ujednolicenie ukladu wspolrzednych
+    img = cv2.flip(image, 1)
+    #obliczenie minimalnej dlugosci wykrywanej linii
+    l_thres = np.int32(np.size(img, axis=0))# / 1.5)
     #uzyskanie wyniku transformacji Hougha w postaci danych linii
     all_lines = cv2.HoughLines(img,rho=1,theta=np.pi/180,threshold=l_thres)  
-
+    
     #odrzucenie transformacji gdy wykryto za duzo linii
     if (not (np.size(all_lines) >= 3)):
         return _err.too_much_lines
@@ -44,7 +71,7 @@ def detection(image):
     angle = np.median(fi)
     
     #print "kat:", angle
-    return angle
+    return np.float(angle)
 
 
 def calculateValue(angle, angle_lim, value_range):
@@ -54,7 +81,7 @@ def calculateValue(angle, angle_lim, value_range):
     if (angle > angle_lim[1]):
         return _err.angle_above_max
     
-    value = (angle-angle_lim[0])/(angle_lim[1]-angle_lim[0]) *value_range
+    value = (angle*1.0-angle_lim[0]*1.0)/(angle_lim[1]*1.0-angle_lim[0]*1.0) *value_range*1.0
     
     if ((value < 0) or (value > value_range)):
         return _err.value_out_of_limits
